@@ -15,7 +15,7 @@ Options:
     --default                   write default settings
 OPTS
 
-def parser_ARGV
+def parse_ARGV
   begin
     $ARGP = Docopt::docopt(OPTS, help: false)
   rescue Docopt::Exit => e 
@@ -54,9 +54,15 @@ def load_config
   $LOGFILE.sync = true
 
   $CONFIG = YAML.load $CONFILE rescue error "Bad config file."
-
-  $CONFIG['IP'] = if_arg('--ip') || $CONFIG['IP']
-  $CONFIG['PORT'] = if_arg('--port', /\A\d+\z/, &:to_i) || $CONFIG['PORT']
+  
+  $CONFIG['IP'] = if_arg('--ip', '127.0.0.1',
+                         otherwise: proc { if_arg '--ip' }) \
+                    { $CONFIG['IP'] }
+  $CONFIG['PORT'] = if_arg('--port', '8080',
+                           otherwise: proc {
+                             if_arg '--port', /\A\d+\z/, &:to_i 
+                           }) \
+                      { $CONFIG['PORT'] }
 
   error 'Bad port.' unless\
     (0 ... 2**16) === $CONFIG['PORT']

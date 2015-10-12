@@ -20,7 +20,11 @@ class CLI
     STDIN.each_line do |line|
       command, args = line.split
       if command=@commands[command]
-        command.call *args
+        begin
+          command.call *args
+        rescue Exception => e
+          puts e.message, e.backtrace.join("\n")
+        end
       else
         puts 'error'
         @commands[@error].call
@@ -43,7 +47,7 @@ class CLI
 
 end
 
-def my_CLI
+def make_CLI
   cli = CLI.new
 
   cli.defn 'debug',
@@ -106,11 +110,18 @@ def my_CLI
     end
   end
 
+  cli.defn 'update',
+    "update [<dir>]\tUpdate internal directory listings." \
+  do |dir='/', *_|
+    if File.directory?(File.join($CONFIG['file-dir'], dir))
+      update_directories dir
+    else
+      puts "that's not a directory"
+    end
+  end
+
   cli.error = 'help'
 
   cli
 end
-
-
-
 

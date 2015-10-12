@@ -3,15 +3,21 @@ class HTM
 
   DOCTYPE = "<?xml encoding='UTF-8' version='1.0'\n" \
             "?><!DOCTYPE html PUBLIC '-//W3C//DTD XHTML 1.1//EN'\n" \
-            "'http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd'\n"
+            "'http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd'\n".freeze
   
   BIG = {}
-  %i[html head body div nav table ul ol article section].each {|s| BIG[s] = true}
+  %w[html head body div nav table ul ol article section].each {|s| BIG[s] = true}
+
+  DEFAULTS = {
+    'html' => { xmlns: 'http://www.w3.org/1999/xhtml' },
+  }
   
   def self.doc
-    x = self.new([DOCTYPE], first: '>')
-    x.nl
-    x
+    self.new([DOCTYPE], first: '>')
+  end
+
+  def self.sdoc
+    self.new(DOCTYPE.dup, first: '>')
   end
 
   def initialize data=[], first: nil, tab: 0
@@ -22,7 +28,7 @@ class HTM
 
   def nl
     @data << "\n"
-    @data << '  '*@tabstop if @tabstop > 0
+    @data << ' '*@tabstop if @tabstop > 0
     self
   end
 
@@ -39,31 +45,12 @@ class HTM
   attr_reader :data
 
   def tag name, **attrs, &block
-    
+
     self._open name
-
-    self._attributes attrs
     
-    self._interpret (
-      case block.arity
-      when 0
-        block.call
-      when 1
-        block.call XML.new((BIG[name] ? [] : ''), first: nil, tab: @tabstop)
-      else
-        raise ArgumentError, "wrong number of arguments to block"
-      end
-    ) if block
+    self._attributes attrs, big: BIG[name]
 
-    self._close name
-
-    self
-  end
-
-  def tag! name, **attrs, &block
-    self._open name
-
-    self._attributes attrs
+    self.tt.nl if BIG[name]
     
     self._interpret (
       case block.arity
@@ -76,25 +63,30 @@ class HTM
       end
     ) if block
 
+    self.bb.nl if BIG[name]
+
     self._close name
 
     self
+  end
+
+  def tag! name, **attrs, &block
+
+    DEFAULTS[name].each do |attr, val|
+        attrs[attr] ||= val
+    end
+
+    self.tag name, **attrs, &block
   end
 
   def tag_ name, **attrs
 
     self._open name
 
-    self._attributes attrs
+    self._attributes attrs, big: BIG[self]
 
     self._empty
     
-    self
-  end
-
-  def s str
-    self._nix
-    @data << str.encode(xml: :text)
     self
   end
 
@@ -122,8 +114,9 @@ class HTM
     @closer = '/>'
   end
   
-  def _attributes attrs
+  def _attributes attrs, big: false
     attrs.each do |key, value|
+      self.nl if big
       @data << ' ' << key.to_s << '=' << value.encode(xml: :attr)
     end
   end
@@ -133,6 +126,7 @@ class HTM
     when HTM
       self._interpret res.data unless self.equal? res
     when Array
+      self._nix
       case @data
       when Array
         @data.concat res
@@ -140,8 +134,13 @@ class HTM
         @data << res.join
       end
     when String
-      @data << res
+      self._nix
+      @data << res.encode(xml: :text)
     end
+  end
+
+  def self.[] *arr
+    arr.map {|s| s.encode(xml: :text) }
   end
   
   def method_missing name, *args, **attrs, &block
