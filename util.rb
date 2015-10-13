@@ -32,3 +32,11 @@ end
 def open_file how, &b
   proc {|f| begin File.open(f, how, &b) rescue nil end}
 end
+
+def sidetrack &block
+  thr = Thread.new &block
+  int = trap(:INT) { thr.kill }
+  thr.join
+  trap :INT, int
+  nil
+end

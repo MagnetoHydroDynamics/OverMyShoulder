@@ -6,7 +6,7 @@ class HTM
             "'http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd'\n".freeze
   
   BIG = {}
-  %w[html head body div nav table ul ol article section].each {|s| BIG[s] = true}
+  %w[html head body div nav table ul ol article section script style].each {|s| BIG[s] = true}
 
   DEFAULTS = {
     'html' => { xmlns: 'http://www.w3.org/1999/xhtml' },
@@ -24,6 +24,7 @@ class HTM
     @data = data 
     @closer = first
     @tabstop = tab
+    @raw = false
   end
 
   def nl
@@ -40,6 +41,11 @@ class HTM
   def bb
     @tabstop -= 1
     self
+  end
+
+  def raw s=nil
+    @raw = true
+    s
   end
 
   attr_reader :data
@@ -122,11 +128,14 @@ class HTM
   end
 
   def _interpret res
+
     case res
     when HTM
       self._interpret res.data unless self.equal? res
     when Array
       self._nix
+      res = res.map { |s| s.encode(xml: :text) } unless @raw
+
       case @data
       when Array
         @data.concat res
@@ -135,8 +144,11 @@ class HTM
       end
     when String
       self._nix
-      @data << res.encode(xml: :text)
+      res = res.encode(xml: :text) unless @raw
+      @data << res
     end
+
+    @raw = false
   end
 
   def self.[] *arr

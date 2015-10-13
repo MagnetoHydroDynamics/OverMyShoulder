@@ -13,7 +13,7 @@ require 'mono_logger'
 require 'pathname'
 
 require './util.rb'
-require './conf.rb'
+require './opt.rb'
 require './html.rb'
 require './cli.rb'
 require './slet.rb'
@@ -53,42 +53,53 @@ IP: 127.0.0.1
 
 PORT: 8080
 
-file-dir: '.'
+file-dir: './files/'
 
 fifo-dir: './fifo/'
 
-css-dir: './css'
+css-dir: './css/'
 
-js-dir: './js'
-
+js-dir: './js/'
 
 views:
-  directory: 'directory.css'
-  markdown: 'markdown.css'
+  dir: 'dir.css'
+  mark: 'mark.css'
   code: 'code.css'
+  nav: 'nav.css'
+  img: 'img.css'
+  ? dl
+  ? txt
+  ? html
 
 default:
-  mkdn: markdown
-  rb: code
-  txt: code
-  js: code
-  css: code
-  html: html
+  '.mkdn': mark
+  '.rb': code
+  '.txt': code
+  '.js': code
+  '.css': code
+  '.html': html
+  '/': dir
 
 filetypes:
   '.mkdn':
-    ? markdown
+    ? mark
     ? code
-    ? raw
+    ? txt
   '.rb':
     ? code
-    ? raw
+    ? txt
   '.txt':
     ? code
-    ? raw
+    ? txt
+  '.js':
+    ? code
+    ? txt
+  '.css':
+    ? code
+    ? txt
   '.html':
     ? html
-    ? raw
+    ? txt
   '/': 
-    ? directory
+    ? dir
 ...

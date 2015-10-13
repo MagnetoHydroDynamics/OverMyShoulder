@@ -4,30 +4,23 @@ require 'pathname'
 SERVER_TYPE = `uname -npor`.chomp!
 
 def default_h headers: {}, len: 0
-  headers['Content-Type'] ||= 'text/html; encoding=utf-8'
-  headers['Date'] ||= Time.now.httpdate
-  headers['Server'] ||= SERVER_TYPE
-  headers['Content-Length'] ||= len.to_s
-  headers
 end
 
-def response res
-  default_h headers: res[1], len: compute_length(res[2])
-  res
-end
-
-def compute_length body
-  case body
-  when Array
-    body.map(&:length).reduce(0,&:+)
-  when String
-    body.length
-  end
-end
 
 class Middle
   def initialize app
     @app = app
+  end
+
+  def self.response res
+    res[1]['Content-Type'] ||= 'text/html; encoding=utf-8'
+    res[1]['Date'] ||= Time.now.httpdate
+    res[1]['Server'] ||= SERVER_TYPE
+    res[1]['Content-Length'] ||= res[2].map(&:bytesize).reduce(0, &:+)
+    res[1]['Content-Length'] = res[1]['Content-Length'].to_s
+
+    res[2] ||= ['something went wrong']
+    return res
   end
 
   def call env
@@ -36,19 +29,19 @@ class Middle
     when 'HEAD', 'GET'
       full_path = env['SCRIPT_NAME'] + env['PATH_INFO']
       if $PATHS[full_path]
-        response(@app.call env)
+        return self.class.response(@app.call env)
       else
-        self.class._404 full_path
+        return self.class._404 full_path
       end
     else
-      response [405, {'Allowed' => 'GET, HEAD'}, []]
+      return self.class.response [405, {'Allowed' => 'GET, HEAD'}, []]
     end
   rescue Exception => e
-    self.class._500 e
+    return self.class._500 e
   end
 
   def self._404 path
-    response [404, {},
+    self.response [404, {},
       [HTM.sdoc.Html! { |doc|
         doc.Head {
           doc.Title { "Not Found" }
@@ -62,7 +55,7 @@ class Middle
   end
 
   def self._500 exception
-    response [500, {}, [
+    self.response [500, {}, [
       HTM.sdoc.Html! { |doc|
         doc.
         Head {
@@ -72,16 +65,21 @@ class Middle
         Body {
           doc.
           H1 { "500 Internal Error" }.
-          Pre { HTM[exception.class.to_s, ": ", exception.message, "\n    ", exception.backtrace.join("\n    ")] }
+          Pre { [exception.class.to_s, ": ", exception.message, "\n    ", exception.backtrace.join("\n    ")] }
         }
       }.done
     ]]
   end
 end
 
+def path_metadata p
+  [p, $PATHID ||= 0, {}]
+ensure
+  $PATHID += 1
+end
+
 def init_PATHS
-  $PATHS = {'/' => [Pathname.new($CONFIG['file-dir']), 0]}
-  $PATHID = 1
+  $PATHS = {'/' => path_metadata($CONFIG['file-dir'])}
   $PATHS.each do |p, v|
     $BUILDER.map p do
       run ServerLet.new(p, v)
@@ -89,37 +87,43 @@ def init_PATHS
   end
 end
 
-def diff_directories dir='/'
-  glob = ($CONFIG['filetypes'].key?('/') ? '**/*' : '**')
+def clean_old minutes=5
+  t = Time.now - minutes*60
 
+  $PATHS.each_value do |v|
+    v[2].each_value do |vw|
+      vw.clear if vw.time < t
+    end
+  end
+end
+
+def diff_directories dir='/'
+  dir.slice!(0) if dir[0] == '/'
+  
   diff = {}
   $PATHS.each_key { |p| diff[p] = nil }
   diff.delete('/')
-
-  fdir = Pathname.new($CONFIG['file-dir'])
+  
+  fdir = $CONFIG['file-dir']
   dir = fdir + dir
+  
+  dir.children.each do |p|
+    next unless $CONFIG['filetypes'].key? (p.directory? ? '/' : p.extname)
+    next if p.fnmatch('.*')
 
-  extra = dir.directory? ? [dir.to_s] : []
+    rp = '/' + p.relative_path_from(fdir).to_s
+    rp = rp + '/' if p.directory?
 
-  $CONFIG['filetypes'].each_key do |ext|
-    Dir[dir + (glob + ext)].concat(extra).each do |p|
-      rp = '/' + (p = Pathname.new(p)).relative_path_from(fdir).to_s
-
-      if ext == '/'
-        rp = File.join(rp, '/')
-      end
-
-      if diff.key?(rp)
-        diff.delete rp
-      else
-        diff[rp] = [p, $PATHID]
+    if diff.key? rp
+      diff.delete rp
+    else
+        diff[rp] = path_metadata(p)
         $PATHID += 1
-      end
     end
   end
-    
-  puts diff.keys
 
+  puts diff.keys
+  
   return diff
 end
 
@@ -143,4 +147,5 @@ def build_server
   $BUILDER = Rack::Builder.new
   $BUILDER.use Middle
   $BUILDER.use Rack::CommonLogger
+  $BUILDER.run ->_{raise "this should never happen"}
 end
